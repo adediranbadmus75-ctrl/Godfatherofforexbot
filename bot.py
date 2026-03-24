@@ -1,23 +1,27 @@
 import os
+import sys
 import asyncio
 import logging
 from datetime import datetime
 
-# Try to import telegram, but provide helpful error if not installed
+# Print Python version at startup
+print(f"Python version: {sys.version}")
+print(f"Python executable: {sys.executable}")
+
 try:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
     from telegram.constants import ChatMemberStatus
+    print("Telegram module imported successfully")
 except ImportError as e:
     print(f"Error importing telegram: {e}")
-    print("Please install python-telegram-bot: pip install python-telegram-bot==20.7")
-    exit(1)
+    sys.exit(1)
 
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ USER_ID = os.environ.get("USER_ID")
 
 logger.info("=" * 50)
 logger.info("Starting Telegram Member Bot")
-logger.info(f"Python version: {os.sys.version}")
+logger.info(f"Python version: {sys.version}")
 logger.info(f"CHANNEL_ID: {CHANNEL_ID}")
 logger.info(f"USER_ID: {USER_ID}")
 logger.info(f"TOKEN exists: {bool(TOKEN)}")
@@ -41,13 +45,17 @@ class MemberMonitorBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
-        await update.message.reply_text(
-            f"🤖 Bot is running!\n\n"
-            f"Monitoring channel: {CHANNEL_ID}\n"
-            f"Sending notifications to: {USER_ID}\n\n"
-            f"Use /status to check current status"
-        )
-        logger.info(f"Sent /start response to {update.effective_user.id}")
+        try:
+            await update.message.reply_text(
+                f"🤖 Bot is running!\n\n"
+                f"Monitoring channel: {CHANNEL_ID}\n"
+                f"Sending notifications to: {USER_ID}\n\n"
+                f"Use /status to check current status\n\n"
+                f"Python version: {sys.version.split()[0]}"
+            )
+            logger.info(f"Sent /start response to {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"Error in start command: {e}")
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
@@ -62,9 +70,11 @@ class MemberMonitorBot:
                 f"Members: {member_count}\n"
                 f"Tracked new members: {len(self.tracked_members)}\n"
                 f"Notification User ID: {USER_ID}\n"
-                f"Bot Status: 🟢 Active"
+                f"Bot Status: 🟢 Active\n"
+                f"Python: {sys.version.split()[0]}"
             )
             await update.message.reply_text(status_text, parse_mode='Markdown')
+            logger.info(f"Sent status response to {update.effective_user.id}")
         except Exception as e:
             await update.message.reply_text(f"Error getting status: {str(e)}")
             logger.error(f"Error in status: {e}")
@@ -126,7 +136,7 @@ class MemberMonitorBot:
     async def run(self):
         """Run the bot"""
         try:
-            # Build application - this is where the error happens in Python 3.14
+            # Build application
             logger.info("Building application...")
             self.application = Application.builder().token(TOKEN).build()
             logger.info("Application built successfully")
@@ -152,7 +162,7 @@ class MemberMonitorBot:
             try:
                 await self.application.bot.send_message(
                     chat_id=int(USER_ID),
-                    text=f"🤖 Bot started successfully!\n\nMonitoring channel: {CHANNEL_ID}\n\nPython version: {os.sys.version.split()[0]}"
+                    text=f"🤖 Bot started successfully!\n\nMonitoring channel: {CHANNEL_ID}\n\nPython version: {sys.version.split()[0]}"
                 )
                 logger.info("Startup notification sent")
             except Exception as e:
