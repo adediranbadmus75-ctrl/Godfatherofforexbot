@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: telegram-member-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false  # This will be set manually in Render dashboard
+      - key: CHANNEL_ID
+        sync: false
+      - key: USER_ID
+        sync: false
