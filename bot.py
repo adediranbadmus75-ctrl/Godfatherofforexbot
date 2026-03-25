@@ -1,5 +1,7 @@
 import os
+import sys
 import logging
+import asyncio
 from datetime import datetime
 from typing import Set, Dict
 from dotenv import load_dotenv
@@ -7,23 +9,39 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
 from telegram.constants import ParseMode
 
+# Force flush stdout/stderr
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 # Load environment variables
 load_dotenv()
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-OWNER_ID = int(os.getenv('YOUR_USER_ID'))
+OWNER_ID = os.getenv('YOUR_USER_ID')
 
 # Validate configuration
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required")
+    print("❌ ERROR: BOT_TOKEN environment variable is not set!")
+    sys.exit(1)
+    
 if not OWNER_ID:
-    raise ValueError("YOUR_USER_ID environment variable is required")
+    print("❌ ERROR: YOUR_USER_ID environment variable is not set!")
+    sys.exit(1)
+
+try:
+    OWNER_ID = int(OWNER_ID)
+except ValueError:
+    print(f"❌ ERROR: YOUR_USER_ID must be a number, got: {OWNER_ID}")
+    sys.exit(1)
 
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -31,11 +49,19 @@ logger = logging.getLogger(__name__)
 monitored_channels: Set[int] = set()
 channel_members: Dict[int, Set[int]] = {}
 
+# Print startup banner
+print("=" * 50)
+print("🤖 Telegram Member Monitor Bot")
+print("=" * 50)
+print(f"Bot Token: {BOT_TOKEN[:10]}...{BOT_TOKEN[-5:]}")
+print(f"Owner ID: {OWNER_ID}")
+print("=" * 50)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
     user_id = update.effective_user.id
     
-    logger.info(f"Received /start from user {user_id}")
+    logger.info(f"📨 Received /start from user {user_id}")
     
     if user_id != OWNER_ID:
         await update.message.reply_text("❌ Unauthorized. This bot is for personal use only.")
@@ -56,7 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN
     )
     
-    logger.info(f"Sent welcome message to user {user_id}")
+    logger.info(f"✅ Sent welcome message to user {user_id}")
 
 async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add current channel to monitoring"""
@@ -69,6 +95,8 @@ async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if command is used in a channel or supergroup
     chat = update.effective_chat
     chat_type = chat.type
+    
+    logger.info(f"📝 Add channel command from user {user_id} in chat {chat.id} (type: {chat_type})")
     
     if chat_type not in ['channel', 'supergroup']:
         await update.message.reply_text(
@@ -116,10 +144,10 @@ async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         
-        logger.info(f"Started monitoring channel: {channel_name} (ID: {channel_id})")
+        logger.info(f"✅ Started monitoring channel: {channel_name} (ID: {channel_id})")
         
     except Exception as e:
-        logger.error(f"Error adding channel {channel_id}: {e}")
+        logger.error(f"❌ Error adding channel {channel_id}: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 async def remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -154,7 +182,7 @@ async def remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN
     )
     
-    logger.info(f"Stopped monitoring channel: {channel_name} (ID: {channel_id})")
+    logger.info(f"✅ Stopped monitoring channel: {channel_name} (ID: {channel_id})")
 
 async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all monitored channels"""
@@ -260,7 +288,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
-    logger.error(f"Update {update} caused error: {context.error}")
+    logger.error(f"❌ Update {update} caused error: {context.error}")
     
     # Notify owner about critical errors
     if update and update.effective_user and update.effective_user.id == OWNER_ID:
@@ -283,48 +311,65 @@ async def post_init(application: Application):
         await application.bot.send_message(
             chat_id=OWNER_ID,
             text="🤖 **Bot is online and ready!**\n\n"
-                 "Use /add in any channel where I'm admin to start monitoring.",
+                 "Use /add in any channel where I'm admin to start monitoring.\n\n"
+                 f"Monitored channels: {len(monitored_channels)}",
             parse_mode=ParseMode.MARKDOWN
         )
-        logger.info("Startup notification sent to owner")
+        logger.info("✅ Startup notification sent to owner")
     except Exception as e:
-        logger.error(f"Failed to send startup notification: {e}")
+        logger.error(f"❌ Failed to send startup notification: {e}")
+
+async def main_async():
+    """Async main function"""
+    # Create application
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # Add command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("add", add_channel))
+    application.add_handler(CommandHandler("remove", remove_channel))
+    application.add_handler(CommandHandler("list", list_channels))
+    
+    # Add handler for member updates (catches joins and leaves)
+    application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+    
+    # Add error handler
+    application.add_error_handler(error_handler)
+    
+    # Initialize and start
+    await application.initialize()
+    await application.start()
+    
+    # Start polling
+    await application.updater.start_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        poll_interval=1.0
+    )
+    
+    logger.info("🚀 Bot polling started!")
+    
+    # Keep running
+    try:
+        # Keep the bot running
+        stop_signal = asyncio.Event()
+        await stop_signal.wait()
+    except KeyboardInterrupt:
+        logger.info("Received shutdown signal")
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
 
 def main():
     """Main entry point"""
     try:
-        # Create application
-        application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-        
-        # Add command handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("add", add_channel))
-        application.add_handler(CommandHandler("remove", remove_channel))
-        application.add_handler(CommandHandler("list", list_channels))
-        
-        # Add handler for member updates (catches joins and leaves)
-        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
-        
-        # Add error handler
-        application.add_error_handler(error_handler)
-        
-        # Start bot with proper polling configuration
-        logger.info("🚀 Starting Telegram Member Monitor Bot...")
-        logger.info(f"Bot token: {BOT_TOKEN[:10]}...")
-        logger.info(f"Owner ID: {OWNER_ID}")
-        
-        # Start polling with higher timeout and proper settings
-        application.run_polling(
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-            poll_interval=1.0,
-            timeout=30
-        )
-        
+        print("🚀 Starting Telegram Member Monitor Bot...")
+        asyncio.run(main_async())
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        raise
+        logger.error(f"❌ Fatal error: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
