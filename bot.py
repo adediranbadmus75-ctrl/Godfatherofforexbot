@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import asyncio
 from datetime import datetime
 from typing import Set, Dict, List
 from dotenv import load_dotenv
@@ -111,8 +112,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized.")
         return
     
-    owners_list = ", ".join([str(uid) for uid in OWNER_IDS])
-    
     await update.message.reply_text(
         f"🤖 **Member Monitor Bot Active**\n\n"
         f"👥 **Authorized Owners:** `{len(OWNER_IDS)}` users\n"
@@ -147,7 +146,6 @@ async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     channel_name = chat.title or f"Channel {channel_id}"
     
     try:
-        # Check if bot is member
         bot_member = await context.bot.get_chat_member(channel_id, context.bot.id)
         
         if bot_member.status not in ['administrator', 'member']:
@@ -263,11 +261,9 @@ async def handle_member_update(update: Update, context: ContextTypes.DEFAULT_TYP
     old_status = chat_member.old_chat_member.status
     user = chat_member.new_chat_member.user
     
-    # Skip bot itself
     if user.id == context.bot.id:
         return
     
-    # Member joined
     if new_status == 'member' and old_status in ['left', 'kicked']:
         if channel_id not in channel_members:
             channel_members[channel_id] = set()
@@ -275,7 +271,6 @@ async def handle_member_update(update: Update, context: ContextTypes.DEFAULT_TYP
         if user.id not in channel_members[channel_id]:
             channel_members[channel_id].add(user.id)
             
-            # Format message
             username = f"@{user.username}" if user.username else "No username"
             full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "No name"
             
@@ -289,17 +284,40 @@ async def handle_member_update(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"📊 **Total:** {len(channel_members[channel_id])} members tracked"
             )
             
-            # Notify all owners
             await notify_all_owners(context.bot, message)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
     logger.error(f"Error: {context.error}")
 
+async def post_init(application: Application):
+    """Post initialization hook"""
+    logger.info("✅ Bot initialized and ready")
+    # Send startup message to all owners
+    for owner_id in OWNER_IDS:
+        try:
+            await application.bot.send_message(
+                chat_id=owner_id,
+                text=f"🤖 **Bot is online!**\n\n"
+                     f"Monitoring {len(monitored_channels)} channel(s)\n"
+                     f"Authorized owners: {len(OWNER_IDS)} user(s)\n"
+                     "Use /add in a channel to start monitoring",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            logger.error(f"Could not send startup message to {owner_id}: {e}")
+
 def main():
     """Main function"""
-    # Create application
-    application = Application.builder().token(BOT_TOKEN).build()
+    logger.info("🚀 Starting bot...")
+    
+    # Create application with post_init
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
     
     # Add handlers
     application.add_handler(CommandHandler("start", start))
@@ -310,9 +328,7 @@ def main():
     application.add_handler(ChatMemberHandler(handle_member_update, ChatMemberHandler.CHAT_MEMBER))
     application.add_error_handler(error_handler)
     
-    # Start bot
-    logger.info("🚀 Starting bot...")
-    
+    # Run the application
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
