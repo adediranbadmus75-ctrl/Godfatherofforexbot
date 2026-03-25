@@ -293,7 +293,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application: Application):
     """Post initialization hook"""
     logger.info("✅ Bot initialized and ready")
-    # Send startup message to all owners
     for owner_id in OWNER_IDS:
         try:
             await application.bot.send_message(
@@ -308,8 +307,15 @@ async def post_init(application: Application):
             logger.error(f"Could not send startup message to {owner_id}: {e}")
 
 def main():
-    """Main function"""
+    """Main function - FIX for Python 3.14 event loop issue"""
     logger.info("🚀 Starting bot...")
+    
+    # FIX: Create and set event loop explicitly for Python 3.14 compatibility
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     
     # Create application with post_init
     application = (
