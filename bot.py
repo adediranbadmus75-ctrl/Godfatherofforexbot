@@ -35,6 +35,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
     user_id = update.effective_user.id
     
+    logger.info(f"Received /start from user {user_id}")
+    
     if user_id != OWNER_ID:
         await update.message.reply_text("❌ Unauthorized. This bot is for personal use only.")
         return
@@ -53,6 +55,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ Bot needs at least 'View Messages' and 'Invite Users' permissions",
         parse_mode=ParseMode.MARKDOWN
     )
+    
+    logger.info(f"Sent welcome message to user {user_id}")
 
 async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add current channel to monitoring"""
@@ -269,31 +273,58 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+async def post_init(application: Application):
+    """Callback after application initialization"""
+    logger.info("✅ Bot started successfully!")
+    logger.info(f"Bot username: @{application.bot.username}")
+    
+    # Send startup notification to owner
+    try:
+        await application.bot.send_message(
+            chat_id=OWNER_ID,
+            text="🤖 **Bot is online and ready!**\n\n"
+                 "Use /add in any channel where I'm admin to start monitoring.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        logger.info("Startup notification sent to owner")
+    except Exception as e:
+        logger.error(f"Failed to send startup notification: {e}")
+
 def main():
     """Main entry point"""
-    # Create application
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Add command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("add", add_channel))
-    application.add_handler(CommandHandler("remove", remove_channel))
-    application.add_handler(CommandHandler("list", list_channels))
-    
-    # Add handler for member updates (catches joins and leaves)
-    application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
-    
-    # Add error handler
-    application.add_error_handler(error_handler)
-    
-    # Start bot
-    logger.info("🚀 Starting Telegram Member Monitor Bot...")
-    logger.info(f"Bot token: {BOT_TOKEN[:10]}...")
-    logger.info(f"Owner ID: {OWNER_ID}")
-    
-    # Start polling
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        # Create application
+        application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+        
+        # Add command handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("add", add_channel))
+        application.add_handler(CommandHandler("remove", remove_channel))
+        application.add_handler(CommandHandler("list", list_channels))
+        
+        # Add handler for member updates (catches joins and leaves)
+        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        
+        # Add error handler
+        application.add_error_handler(error_handler)
+        
+        # Start bot with proper polling configuration
+        logger.info("🚀 Starting Telegram Member Monitor Bot...")
+        logger.info(f"Bot token: {BOT_TOKEN[:10]}...")
+        logger.info(f"Owner ID: {OWNER_ID}")
+        
+        # Start polling with higher timeout and proper settings
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            poll_interval=1.0,
+            timeout=30
+        )
+        
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        raise
 
 if __name__ == '__main__':
     main()
