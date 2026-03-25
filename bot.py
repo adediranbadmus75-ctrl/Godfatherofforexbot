@@ -16,9 +16,10 @@ sys.stderr.reconfigure(line_buffering=True)
 # Load environment variables
 load_dotenv()
 
-# Configuration
+# Configuration - Using your exact environment variable names
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-OWNER_ID = os.getenv('YOUR_USER_ID')
+OWNER_ID = os.getenv('USER_ID')  # Changed from YOUR_USER_ID to USER_ID
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # This will be used as default channel
 
 # Validate configuration
 if not BOT_TOKEN:
@@ -26,13 +27,14 @@ if not BOT_TOKEN:
     sys.exit(1)
     
 if not OWNER_ID:
-    print("❌ ERROR: YOUR_USER_ID environment variable is not set!")
+    print("❌ ERROR: USER_ID environment variable is not set!")
+    print("Please add USER_ID to your Render environment variables.")
     sys.exit(1)
 
 try:
     OWNER_ID = int(OWNER_ID)
 except ValueError:
-    print(f"❌ ERROR: YOUR_USER_ID must be a number, got: {OWNER_ID}")
+    print(f"❌ ERROR: USER_ID must be a number, got: {OWNER_ID}")
     sys.exit(1)
 
 # Setup logging
@@ -49,12 +51,24 @@ logger = logging.getLogger(__name__)
 monitored_channels: Set[int] = set()
 channel_members: Dict[int, Set[int]] = {}
 
+# If CHANNEL_ID is provided, add it to monitored channels on startup
+if CHANNEL_ID:
+    try:
+        default_channel = int(CHANNEL_ID)
+        monitored_channels.add(default_channel)
+        channel_members[default_channel] = set()
+        logger.info(f"✅ Added default channel {default_channel} from CHANNEL_ID env var")
+    except ValueError:
+        logger.error(f"❌ CHANNEL_ID must be a number, got: {CHANNEL_ID}")
+
 # Print startup banner
 print("=" * 50)
 print("🤖 Telegram Member Monitor Bot")
 print("=" * 50)
 print(f"Bot Token: {BOT_TOKEN[:10]}...{BOT_TOKEN[-5:]}")
 print(f"Owner ID: {OWNER_ID}")
+print(f"Default Channel ID: {CHANNEL_ID if CHANNEL_ID else 'Not set'}")
+print(f"Monitored Channels: {len(monitored_channels)}")
 print("=" * 50)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,12 +81,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized. This bot is for personal use only.")
         return
     
+    # Show current monitoring status
+    status_text = ""
+    if monitored_channels:
+        status_text = f"\n\n📊 **Currently monitoring {len(monitored_channels)} channel(s)**"
+    
     await update.message.reply_text(
-        "🤖 **Member Monitor Bot Active**\n\n"
+        f"🤖 **Member Monitor Bot Active**{status_text}\n\n"
         "**Commands:**\n"
         "• `/add` - Add current channel to monitoring\n"
         "• `/remove` - Remove current channel from monitoring\n"
         "• `/list` - List all monitored channels\n"
+        "• `/status` - Show bot status\n"
         "• `/help` - Show this message\n\n"
         "**Setup:**\n"
         "1. Add bot as admin to your channel\n"
@@ -212,6 +232,28 @@ async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
 
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show bot status"""
+    user_id = update.effective_user.id
+    
+    if user_id != OWNER_ID:
+        await update.message.reply_text("❌ Unauthorized.")
+        return
+    
+    status_msg = (
+        f"🤖 **Bot Status**\n\n"
+        f"✅ Bot is running\n"
+        f"📊 Monitoring {len(monitored_channels)} channel(s)\n"
+        f"👥 Total members tracked: {sum(len(members) for members in channel_members.values())}\n"
+        f"🕐 Uptime: Active\n"
+        f"🔧 Owner ID: `{OWNER_ID}`\n"
+    )
+    
+    if CHANNEL_ID:
+        status_msg += f"📌 Default channel: `{CHANNEL_ID}`\n"
+    
+    await update.message.reply_text(status_msg, parse_mode=ParseMode.MARKDOWN)
+
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle member join/leave events"""
     if not update.chat_member:
@@ -311,8 +353,9 @@ async def post_init(application: Application):
         await application.bot.send_message(
             chat_id=OWNER_ID,
             text="🤖 **Bot is online and ready!**\n\n"
-                 "Use /add in any channel where I'm admin to start monitoring.\n\n"
-                 f"Monitored channels: {len(monitored_channels)}",
+                 f"📊 Monitoring {len(monitored_channels)} channel(s)\n\n"
+                 "Use /add in any channel where I'm admin to start monitoring.\n"
+                 "Use /status to check bot status.",
             parse_mode=ParseMode.MARKDOWN
         )
         logger.info("✅ Startup notification sent to owner")
@@ -330,6 +373,7 @@ async def main_async():
     application.add_handler(CommandHandler("add", add_channel))
     application.add_handler(CommandHandler("remove", remove_channel))
     application.add_handler(CommandHandler("list", list_channels))
+    application.add_handler(CommandHandler("status", status_command))
     
     # Add handler for member updates (catches joins and leaves)
     application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
