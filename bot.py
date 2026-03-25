@@ -261,8 +261,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
     logger.error(f"Error: {context.error}")
 
-async def main():
-    """Main function"""
+def main():
+    """Main function - SIMPLIFIED for Render"""
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -278,44 +278,16 @@ async def main():
     # Start bot
     logger.info("🚀 Starting bot...")
     
-    # Initialize and start polling
-    await application.initialize()
-    await application.start()
-    
-    # Start polling with simple configuration
-    await application.updater.start_polling(
+    # Use run_polling instead of manual async management
+    application.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True
+        drop_pending_updates=True,
+        poll_interval=1.0
     )
-    
-    logger.info("✅ Bot is running! Press Ctrl+C to stop")
-    
-    # Send startup message
-    try:
-        await application.bot.send_message(
-            chat_id=OWNER_ID,
-            text="🤖 **Bot is online!**\n\n"
-                 f"Monitoring {len(monitored_channels)} channel(s)\n"
-                 "Use /add in a channel to start monitoring",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        logger.info("Startup message sent")
-    except Exception as e:
-        logger.error(f"Could not send startup message: {e}")
-    
-    # Keep running
-    try:
-        await asyncio.Event().wait()
-    except KeyboardInterrupt:
-        logger.info("Stopping...")
-    finally:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
 
 if __name__ == '__main__':
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\nBot stopped")
     except Exception as e:
