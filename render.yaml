@@ -2,9 +2,12 @@ services:
   - type: worker
     name: telegram-member-monitor
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.0
       - key: BOT_TOKEN
         sync: false
       - key: USER_ID
