@@ -7,5 +7,5 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: YOUR_USER_ID
+      - key: USER_ID
         sync: false
