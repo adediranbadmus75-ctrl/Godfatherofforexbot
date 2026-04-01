@@ -7,12 +7,14 @@ services:
     startCommand: python bot.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0  # Change from 3.14.0 to 3.11.0
+        value: 3.14.0
       - key: BOT_TOKEN
         sync: false
       - key: USER_ID
         sync: false
       - key: USER_ID_2
+        sync: false
+      - key: USER_ID_3      # <-- ADD THIS
         sync: false
       - key: CHANNEL_ID
         sync: false
