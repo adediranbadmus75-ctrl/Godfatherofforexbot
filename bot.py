@@ -20,12 +20,12 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 CHANNEL_ID = os.getenv('CHANNEL_ID')
 
-# Get all owner IDs
+# Get all owner IDs - EXACTLY 3 USERS
 def get_owner_ids() -> List[int]:
     """Get list of all authorized user IDs from environment variables"""
     owner_ids = []
     
-    # Primary owner
+    # Primary owner (USER_ID)
     primary_id = os.getenv('USER_ID')
     if primary_id:
         try:
@@ -33,15 +33,23 @@ def get_owner_ids() -> List[int]:
         except ValueError:
             print(f"❌ ERROR: USER_ID must be a number, got: {primary_id}")
     
-    # Additional owners (USER_ID_2, USER_ID_3, etc.)
-    for i in range(2, 10):  # Supports up to USER_ID_9
-        additional_id = os.getenv(f'USER_ID_{i}')
-        if additional_id:
-            try:
-                owner_ids.append(int(additional_id))
-                print(f"✅ Added additional owner: USER_ID_{i} = {additional_id}")
-            except ValueError:
-                print(f"⚠️ Warning: USER_ID_{i} is not a valid number: {additional_id}")
+    # Second owner (USER_ID_2)
+    second_id = os.getenv('USER_ID_2')
+    if second_id:
+        try:
+            owner_ids.append(int(second_id))
+            print(f"✅ Added USER_ID_2 = {second_id}")
+        except ValueError:
+            print(f"⚠️ Warning: USER_ID_2 is not a valid number: {second_id}")
+    
+    # Third owner (USER_ID_3)
+    third_id = os.getenv('USER_ID_3')
+    if third_id:
+        try:
+            owner_ids.append(int(third_id))
+            print(f"✅ Added USER_ID_3 = {third_id}")
+        except ValueError:
+            print(f"⚠️ Warning: USER_ID_3 is not a valid number: {third_id}")
     
     return owner_ids
 
